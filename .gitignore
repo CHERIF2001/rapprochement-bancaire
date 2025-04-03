@@ -1,0 +1,28 @@
+# Fichiers de utilisés
+*.csv
+*.json
+*.jpg
+*.jpeg
+
+
+
+# Dossiers
+/venv/
+/images/
+/doc_json/
+/bank_statements/
+/receipts/
+/enchanced-receipts/
+/__pycache__/
+/pycache/
+
+# Fichiers de logs
+*.log
+
+# Fichiers d'environnement
+.env
+*.env.local
+
+# Fichiers système
+.DS_Store
+Thumbs.db
