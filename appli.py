@@ -15,8 +15,8 @@ if 'results_df' not in st.session_state:
     st.session_state.results_df = None
 if 'receipts_dir' not in st.session_state:
     st.session_state.receipts_dir = "project/images/receipts"
-if 'selected_row' not in st.session_state:
-    st.session_state.selected_row = None
+if 'clicked_row' not in st.session_state:
+    st.session_state.clicked_row = None
 
 # CSS personnalisé
 st.markdown("""
@@ -28,13 +28,37 @@ st.markdown("""
         border-radius: 10px;
         box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2);
     }
+    .stDataFrame tr:hover {
+        background-color: #f5f5f5;
+        cursor: pointer;
+    }
+    .selected-row {
+        background-color: #e6f7ff !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-def safe_display_columns(df, default_columns):
+def safe_display_columns(df, columns):
     """Sélectionne uniquement les colonnes disponibles"""
-    available_columns = [col for col in default_columns if col in df.columns]
-    return df[available_columns]
+    return df[[col for col in columns if col in df.columns]]
+
+def save_uploaded_files(uploaded_files, save_dir):
+    """Sauvegarde les fichiers uploadés dans un dossier"""
+    os.makedirs(save_dir, exist_ok=True)
+    for uploaded_file in uploaded_files:
+        with open(os.path.join(save_dir, uploaded_file.name), "wb") as f:
+            f.write(uploaded_file.getbuffer())
+    return save_dir
+
+def load_image(image_path):
+    """Charge une image avec vérification du chemin"""
+    try:
+        if image_path and os.path.exists(image_path):
+            return Image.open(image_path)
+        return None
+    except Exception as e:
+        st.error(f"Erreur de chargement de l'image: {str(e)}")
+        return None
 
 # Interface principale
 tab1, tab2 = st.tabs(["Rapprochement", "Recherche de Factures"])
@@ -90,6 +114,7 @@ with tab1:
                     
                     if os.path.exists(output_csv):
                         st.session_state.results_df = pd.read_csv(output_csv)
+                        st.session_state.clicked_row = None
                         st.success(f"Analyse terminée ({len(st.session_state.results_df)} transactions)")
         except Exception as e:
             st.error(f"Erreur: {str(e)}")
@@ -101,52 +126,47 @@ with tab1:
     if st.session_state.results_df is not None:
         st.subheader("Résultats du rapprochement")
         
-        # Colonnes à afficher par défaut
-        default_columns = ['vendor', 'amount', 'date', 'similarity_score']
-        display_columns = [col for col in default_columns if col in st.session_state.results_df.columns]
+        # Colonnes spécifiques à afficher
+        columns_to_display = ['vendor', 'amount', 'currency', 'date']
+        display_df = safe_display_columns(st.session_state.results_df, columns_to_display)
         
-        # Tableau compact
-        st.dataframe(
-            st.session_state.results_df[display_columns],
-            height=300,
-            use_container_width=True,
-            hide_index=True
+        # Afficher le tableau avec sélection de ligne
+        selected_rows = st.dataframe(
+            display_df,
+            hide_index=True,
+            on_select="rerun",
+            selection_mode="single-row",
+            key="dataframe_tab1"
         )
         
-        # Sélection de ligne
-        if not st.session_state.results_df.empty:
-            selected_idx = st.selectbox(
-                "Sélectionnez une transaction pour voir les détails",
-                range(len(st.session_state.results_df)),
-                format_func=lambda x: (
-                    f"{st.session_state.results_df.iloc[x].get('vendor', 'N/A')} | "
-                    f"{st.session_state.results_df.iloc[x].get('amount', 'N/A')}€ | "
-                    f"{st.session_state.results_df.iloc[x].get('date', 'N/A')}"
-                )
-            )
+        # Gérer la sélection de ligne
+        if hasattr(selected_rows, 'selection') and selected_rows.selection:
+            selected_indices = selected_rows.selection.rows
+            if selected_indices:
+                st.session_state.clicked_row = selected_indices[0]
+        
+        # Afficher l'image sélectionnée
+        if st.session_state.clicked_row is not None and st.session_state.clicked_row < len(st.session_state.results_df):
+            row = st.session_state.results_df.iloc[st.session_state.clicked_row]
+            img_path = row.get('image_path', '')
+            img = load_image(img_path)
             
-            # Détails de la transaction
-            if selected_idx is not None:
+            if img:
                 st.divider()
-                row = st.session_state.results_df.iloc[selected_idx]
-                
                 col1, col2 = st.columns([1, 2])
                 with col1:
-                    img_path = row.get('image_path', '')
-                    if img_path and os.path.exists(img_path):
-                        st.image(Image.open(img_path), width=350)
-                    else:
-                        st.warning("Image non disponible")
-                
+                    st.image(img, width=350, caption=os.path.basename(img_path))
                 with col2:
                     st.subheader("Détails de la transaction")
                     st.json({
                         "Fournisseur": row.get('vendor', 'N/A'),
                         "Montant": row.get('amount', 'N/A'),
+                        "Devise": row.get('currency', 'N/A'),
                         "Date": row.get('date', 'N/A'),
-                        "Score de similarité": row.get('similarity_score', 'N/A'),
-                        "Fichier source": row.get('csv_file', 'N/A')
+                        "Chemin de l'image": img_path
                     })
+            else:
+                st.warning(f"Image non disponible ou chemin invalide: {img_path}")
 
 with tab2:
     st.header("Recherche de Factures")
@@ -169,6 +189,7 @@ with tab2:
                     
                     if matches:
                         st.session_state.results_df = pd.DataFrame(matches)
+                        st.session_state.clicked_row = None
                         st.success(f"{len(matches)} factures trouvées")
                     else:
                         st.warning("Aucune correspondance trouvée")
@@ -180,31 +201,38 @@ with tab2:
     if st.session_state.results_df is not None and not st.session_state.results_df.empty:
         st.subheader("Résultats de la recherche")
         
-        selected_idx = st.selectbox(
-            "Sélectionnez une facture",
-            range(len(st.session_state.results_df)),
-            key="search_select",
-            format_func=lambda x: (
-                f"{st.session_state.results_df.iloc[x].get('vendor', 'N/A')} | "
-                f"{st.session_state.results_df.iloc[x].get('amount', 'N/A')}€"
-            )
+        # Colonnes spécifiques à afficher
+        columns_to_display = ['vendor', 'amount', 'currency', 'date']
+        display_df = safe_display_columns(st.session_state.results_df, columns_to_display)
+        
+        # Afficher le tableau avec sélection de ligne
+        selected_rows = st.dataframe(
+            display_df,
+            hide_index=True,
+            on_select="rerun",
+            selection_mode="single-row",
+            key="dataframe_tab2"
         )
         
-        if selected_idx is not None:
-            selected = st.session_state.results_df.iloc[selected_idx]
+        # Gérer la sélection de ligne
+        if hasattr(selected_rows, 'selection') and selected_rows.selection:
+            selected_indices = selected_rows.selection.rows
+            if selected_indices:
+                st.session_state.clicked_row = selected_indices[0]
+        
+        # Afficher l'image sélectionnée
+        if st.session_state.clicked_row is not None and st.session_state.clicked_row < len(st.session_state.results_df):
+            selected = st.session_state.results_df.iloc[st.session_state.clicked_row]
+            img_path = selected.get('image_path', '')
+            img = load_image(img_path)
             
-            col1, col2 = st.columns([1, 2])
-            with col1:
-                if 'image_path' in selected and os.path.exists(selected['image_path']):
-                    st.image(Image.open(selected['image_path']), width=350)
-                    st.download_button(
-                        "Télécharger l'image",
-                        open(selected['image_path'], "rb").read(),
-                        file_name=os.path.basename(selected['image_path']),
-                        mime="image/jpeg"
-                    )
-                else:
-                    st.warning("Image non trouvée")
-            
-            with col2:
-                st.json({k: v for k, v in selected.items() if k != 'image_path'})
+            if img:
+                st.divider()
+                col1, col2 = st.columns([1, 2])
+                with col1:
+                    st.image(img, width=350, caption=os.path.basename(img_path))
+                with col2:
+                    st.subheader("Détails de la facture")
+                    st.json({k: v for k, v in selected.items() if k != 'image_path'})
+            else:
+                st.warning(f"Image non disponible ou chemin invalide: {img_path}")

@@ -3,6 +3,7 @@ import os
 
 def load_bank_statements(folder_path):
     """Charge les relevés bancaires à partir d'un dossier dans un DataFrame."""
+    combined_df = pd.DataFrame()
     all_statements = []
     for filename in os.listdir(folder_path):
         if filename.endswith('.csv'):
