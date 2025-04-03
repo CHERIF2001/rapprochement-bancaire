@@ -1,0 +1,13 @@
+python-dotenv
+mistralai
+requests
+pybase64
+requests
+pypi-json
+pillow
+pandas
+scikit-learn
+streamlit
+tqdm
+uuid
+xlsxwriter 
