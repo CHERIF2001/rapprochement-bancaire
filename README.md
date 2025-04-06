@@ -2,10 +2,10 @@
 # Matching Automatique de Factures à un Relevé Bancaire
 
 ## Présenté par :  
+- Yann Cédric LAVRY
 - Djibril DIOP  
 - Emilienne Pascale EKASSI  
 - Oscar HEUMOU  
-- Yann Cédric LAVRY
 - Cherif MOUNCHILI 
 
 ## Description  
