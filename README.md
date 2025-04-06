@@ -5,7 +5,8 @@
 - Djibril DIOP  
 - Emilienne Pascale EKASSI  
 - Oscar HEUMOU  
-- Yann Cédric LAVRY  
+- Yann Cédric LAVRY
+- Cherif MOUNCHILI 
 
 ## Description  
 Notre programme permet de traiter des images et des fichiers contenant des informations financières afin d'extraire, analyser et comparer des données pour établir des correspondances précises entre nos factures et relevés bancaires.
