@@ -14,7 +14,7 @@
 /receipts/
 /enchanced-receipts/
 /__pycache__/
-/pycache/
+/project/__pycache__/
 
 # Fichiers de logs
 *.log

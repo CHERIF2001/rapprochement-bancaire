@@ -3,9 +3,14 @@ import pandas as pd
 import os
 import tempfile
 import shutil
+import time
+import sys
+from io import StringIO
 from PIL import Image
 import main
 import base64
+from tqdm import tqdm
+from stqdm import stqdm
 
 # Configuration
 st.set_page_config(page_title="Bank Reconciliation System", layout="wide")
@@ -36,20 +41,28 @@ st.markdown("""
     .selected-row {
         background-color: #e6f7ff !important;
     }
+    .stProgress > div > div > div > div {
+        background-color: #1e88e5;
+    }
+    .stqdm > div > div > div > div {
+        background-color: #1e88e5 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 def safe_display_columns(df, columns):
     return df[[col for col in columns if col in df.columns]]
 
-def save_uploaded_files(uploaded_files, save_dir):
+def save_uploaded_files(uploaded_files, save_dir, progress_callback=None):
     os.makedirs(save_dir, exist_ok=True)
     saved_files = []
-    for uploaded_file in uploaded_files:
+    for i, uploaded_file in enumerate(uploaded_files):
         file_path = os.path.join(save_dir, uploaded_file.name)
         with open(file_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
         saved_files.append(file_path)
+        if progress_callback:
+            progress_callback((i + 1) / len(uploaded_files))
     return saved_files
 
 def image_to_base64(image_path):
@@ -83,38 +96,77 @@ with tab1:
         if not uploaded_receipts or not uploaded_statements:
             st.error("Veuillez uploader au moins une facture et un relevé bancaire")
         else:
-            with st.spinner("Analyse en cours..."):
-                try:
-                    # Créer un dossier temporaire
-                    temp_dir = tempfile.mkdtemp()
-                    receipts_dir = os.path.join(temp_dir, "receipts")
-                    statements_dir = os.path.join(temp_dir, "statements")
-                    os.makedirs(receipts_dir, exist_ok=True)
-                    os.makedirs(statements_dir, exist_ok=True)
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            result_container = st.empty()
+            
+            try:
+                # Étape 1: Initialisation (5%)
+                status_text.text("Initialisation...")
+                temp_dir = tempfile.mkdtemp()
+                receipts_dir = os.path.join(temp_dir, "receipts")
+                statements_dir = os.path.join(temp_dir, "statements")
+                os.makedirs(receipts_dir, exist_ok=True)
+                os.makedirs(statements_dir, exist_ok=True)
+                progress_bar.progress(5)
 
-                    # Sauvegarder les fichiers uploadés
-                    receipt_paths = save_uploaded_files(uploaded_receipts, receipts_dir)
-                    statement_paths = save_uploaded_files(uploaded_statements, statements_dir)
+                # Étape 2: Sauvegarde fichiers (15%)
+                def update_progress(progress):
+                    progress_bar.progress(5 + int(progress * 10))
+                    status_text.text(f"Sauvegarde des fichiers... {int(progress * 100)}%")
 
-                    # Stocker les images en base64 dans session_state
-                    st.session_state.temp_images = {
-                        os.path.basename(path): image_to_base64(path) 
-                        for path in receipt_paths
-                    }
+                status_text.text("Sauvegarde des factures...")
+                receipt_paths = save_uploaded_files(uploaded_receipts, receipts_dir, update_progress)
+                
+                status_text.text("Sauvegarde des relevés...")
+                statement_paths = save_uploaded_files(uploaded_statements, statements_dir, update_progress)
+                progress_bar.progress(20)
 
-                    # Exécuter le traitement
-                    output_csv = os.path.join(temp_dir, "results.csv")
-                    main.process_uploads(receipts_dir, statements_dir, output_csv)
+                # Étape 3: Conversion images (15%)
+                status_text.text("Conversion des images...")
+                st.session_state.temp_images = {}
+                total_images = len(receipt_paths)
+                for i, path in enumerate(receipt_paths):
+                    img_name = os.path.basename(path)
+                    st.session_state.temp_images[img_name] = image_to_base64(path)
+                    progress_bar.progress(20 + int((i + 1) / total_images * 15))
+                    status_text.text(f"Conversion des images... {i + 1}/{total_images}")
+                progress_bar.progress(35)
 
-                    if os.path.exists(output_csv):
-                        st.session_state.results_df = pd.read_csv(output_csv)
-                        st.session_state.clicked_row = None
-                        st.success(f"Analyse terminée ({len(st.session_state.results_df)} transactions)")
-                except Exception as e:
-                    st.error(f"Erreur lors du traitement: {str(e)}")
-                finally:
-                    if os.path.exists(temp_dir):
-                        shutil.rmtree(temp_dir)
+                # Étape 4: Traitement principal (50%)
+                status_text.text("Traitement des données...")
+                output_csv = os.path.join(temp_dir, "results.csv")
+                
+                # Simulation de progression pour le traitement
+                for i in range(1, 11):
+                    time.sleep(0.3)  # À remplacer par votre traitement réel
+                    progress_bar.progress(35 + int(i * 5))
+                    status_text.text(f"Traitement des données... Étape {i}/10")
+                
+                # Appel réel à votre fonction de traitement
+                main.process_uploads(receipts_dir, statements_dir, output_csv)
+                progress_bar.progress(85)
+
+                # Étape 5: Chargement résultats (15%)
+                status_text.text("Chargement des résultats...")
+                if os.path.exists(output_csv):
+                    st.session_state.results_df = pd.read_csv(output_csv)
+                    st.session_state.clicked_row = None
+                    progress_bar.progress(100)
+                    status_text.text("")
+                    result_container.success(f"Analyse terminée ({len(st.session_state.results_df)} transactions)")
+                else:
+                    raise FileNotFoundError("Le fichier de résultats n'a pas été généré")
+                    
+            except Exception as e:
+                progress_bar.progress(100)
+                status_text.text("")
+                result_container.error(f"Erreur lors du traitement: {str(e)}")
+                if 'debug_output' in locals():
+                    st.text_area("Détails de l'erreur", debug_output, height=100)
+            finally:
+                if os.path.exists(temp_dir):
+                    shutil.rmtree(temp_dir)
 
     if st.session_state.results_df is not None:
         st.subheader("Résultats du rapprochement")
@@ -166,38 +218,66 @@ with tab2:
     if st.button("Rechercher les factures"):
         if results_file and uploaded_images:
             with st.spinner("Recherche en cours..."):
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                result_container = st.empty()
+                
                 try:
+                    # Étape 1: Initialisation (10%)
+                    status_text.text("Initialisation...")
                     temp_dir = tempfile.mkdtemp()
+                    progress_bar.progress(10)
                     
-                    # Sauvegarder le CSV
+                    # Étape 2: Sauvegarde du CSV (20%)
+                    status_text.text("Traitement du fichier CSV...")
                     csv_path = os.path.join(temp_dir, "results.csv")
                     with open(csv_path, "wb") as f:
                         f.write(results_file.getvalue())
+                    progress_bar.progress(30)
                     
-                    # Sauvegarder les images et stocker en base64
+                    # Étape 3: Sauvegarde des images (30%)
+                    status_text.text("Traitement des images...")
                     images_dir = os.path.join(temp_dir, "images")
                     os.makedirs(images_dir, exist_ok=True)
                     
-                    temp_images = {}
-                    for img in uploaded_images:
+                    st.session_state.temp_images = {}
+                    total_images = len(uploaded_images)
+                    for i, img in enumerate(uploaded_images):
                         img_path = os.path.join(images_dir, img.name)
                         with open(img_path, "wb") as f:
                             f.write(img.getbuffer())
-                        temp_images[img.name] = image_to_base64(img_path)
+                        st.session_state.temp_images[img.name] = image_to_base64(img_path)
+                        progress_bar.progress(30 + int((i + 1) / total_images * 30))
+                        status_text.text(f"Traitement des images... {i + 1}/{total_images}")
+                    progress_bar.progress(60)
                     
-                    st.session_state.temp_images = temp_images
+                    # Étape 4: Recherche des correspondances (30%)
+                    status_text.text("Recherche des correspondances...")
                     
-                    # Exécuter la recherche
+                    # Simulation de progression
+                    for i in range(1, 7):
+                        time.sleep(0.3)
+                        progress_bar.progress(60 + int(i * 5))
+                        status_text.text(f"Recherche en cours... Étape {i}/6")
+                    
                     matches = main.search_receipts_from_uploads(csv_path, images_dir)
+                    progress_bar.progress(90)
                     
+                    # Étape 5: Affichage des résultats (10%)
                     if matches:
                         st.session_state.results_df = pd.DataFrame(matches)
                         st.session_state.clicked_row = None
-                        st.success(f"{len(matches)} factures trouvées")
+                        progress_bar.progress(100)
+                        status_text.text("")
+                        result_container.success(f"{len(matches)} factures trouvées")
                     else:
-                        st.warning("Aucune correspondance trouvée")
+                        progress_bar.progress(100)
+                        status_text.text("")
+                        result_container.warning("Aucune correspondance trouvée")
                 except Exception as e:
-                    st.error(f"Erreur lors de la recherche: {str(e)}")
+                    progress_bar.progress(100)
+                    status_text.text("")
+                    result_container.error(f"Erreur lors de la recherche: {str(e)}")
                 finally:
                     if os.path.exists(temp_dir):
                         shutil.rmtree(temp_dir)
