@@ -1,0 +1,29 @@
+Directive pour l'extraction des informations d'un reçu :
+
+1. "date" : Extraire la date du reçu. Format attendu : JJ/MM/AAAA ou MM/DD/YYYY.
+2. "time" : Extraire l'heure de la transaction. Format attendu : HH:MM (AM/PM ou 24h).
+3. "currency" : Identifier la monnaie utilisée sous forme de code ISO (EUR, USD, GBP, JPY, etc.) et non de symbole.
+4. "vendor" : Extraire le nom du commerce ou du restaurant.
+5. "amount" : Identifier le montant total payé (avant et après taxes si disponible).
+6. "adresse" : Extraire l'adresse complète de l'enseigne (rue, ville, code postal).
+
+Le fichier JSON de sortie doit respecter strictement cette structure :
+
+{
+    "date": "",
+    "time": "",
+    "currency": "",
+    "vendor": "",
+    "amount": "",
+    "adresse": ""
+}
+
+Exemple de sortie attendue :
+{
+    "date": "12/06/2017",
+    "time": "4:44",
+    "currency": "USD",
+    "vendor": "VILLA D'ESTE RESTAURANT",
+    "amount": "94.78",
+    "adresse": "151 E 50th St, New York, NY 10022"
+}
