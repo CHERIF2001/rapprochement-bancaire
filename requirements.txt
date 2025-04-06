@@ -13,3 +13,4 @@ uuid
 xlsxwriter 
 pytest-shutil
 temp
+stqdm
