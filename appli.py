@@ -5,6 +5,7 @@ import tempfile
 import shutil
 from PIL import Image
 import main
+import base64
 
 # Configuration
 st.set_page_config(page_title="Bank Reconciliation System", layout="wide")
@@ -13,10 +14,10 @@ st.title("💼 Système de Rapprochement Bancaire")
 # Session State
 if 'results_df' not in st.session_state:
     st.session_state.results_df = None
-if 'receipts_dir' not in st.session_state:
-    st.session_state.receipts_dir = "project/images/receipts"
 if 'clicked_row' not in st.session_state:
     st.session_state.clicked_row = None
+if 'temp_images' not in st.session_state:
+    st.session_state.temp_images = {}
 
 # CSS personnalisé
 st.markdown("""
@@ -39,26 +40,28 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 def safe_display_columns(df, columns):
-    """Sélectionne uniquement les colonnes disponibles"""
     return df[[col for col in columns if col in df.columns]]
 
 def save_uploaded_files(uploaded_files, save_dir):
-    """Sauvegarde les fichiers uploadés dans un dossier"""
     os.makedirs(save_dir, exist_ok=True)
+    saved_files = []
     for uploaded_file in uploaded_files:
-        with open(os.path.join(save_dir, uploaded_file.name), "wb") as f:
+        file_path = os.path.join(save_dir, uploaded_file.name)
+        with open(file_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
-    return save_dir
+        saved_files.append(file_path)
+    return saved_files
 
-def load_image(image_path):
-    """Charge une image avec vérification du chemin"""
-    try:
-        if image_path and os.path.exists(image_path):
-            return Image.open(image_path)
-        return None
-    except Exception as e:
-        st.error(f"Erreur de chargement de l'image: {str(e)}")
-        return None
+def image_to_base64(image_path):
+    with open(image_path, "rb") as img_file:
+        return base64.b64encode(img_file.read()).decode('utf-8')
+
+def display_image_from_base64(base64_str, caption):
+    st.markdown(
+        f'<img src="data:image/jpeg;base64,{base64_str}" width="350" style="border-radius: 10px; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2);"/>',
+        unsafe_allow_html=True
+    )
+    st.caption(caption)
 
 # Interface principale
 tab1, tab2 = st.tabs(["Rapprochement", "Recherche de Factures"])
@@ -66,71 +69,57 @@ tab1, tab2 = st.tabs(["Rapprochement", "Recherche de Factures"])
 with tab1:
     st.header("Rapprochement Bancaire")
     
-    # Méthode d'import
-    import_method = st.radio("Source des données", ["Dossier local", "Upload de fichiers"])
-    
-    if import_method == "Dossier local":
-        col1, col2 = st.columns(2)
-        with col1:
-            st.session_state.receipts_dir = st.text_input("Dossier des factures", st.session_state.receipts_dir)
-        with col2:
-            statements_dir = st.text_input("Dossier des relevés", "project/bank_statements")
-    else:
-        col1, col2 = st.columns(2)
-        with col1:
-            uploaded_receipts = st.file_uploader("Factures (images)", 
-                                              type=["jpg", "jpeg", "png"], 
-                                              accept_multiple_files=True)
-        with col2:
-            uploaded_statements = st.file_uploader("Relevés bancaires (CSV)", 
-                                                type=["csv"], 
-                                                accept_multiple_files=True)
+    col1, col2 = st.columns(2)
+    with col1:
+        uploaded_receipts = st.file_uploader("Factures (images)", 
+                                          type=["jpg", "jpeg", "png"], 
+                                          accept_multiple_files=True)
+    with col2:
+        uploaded_statements = st.file_uploader("Relevés bancaires (CSV)", 
+                                            type=["csv"], 
+                                            accept_multiple_files=True)
 
-    # Bouton d'exécution
     if st.button("Exécuter le rapprochement", type="primary"):
-        temp_dir = None
-        try:
-            if import_method == "Upload de fichiers" and (uploaded_receipts or uploaded_statements):
-                temp_dir = tempfile.mkdtemp()
-                receipts_path = os.path.join(temp_dir, "receipts")
-                statements_path = os.path.join(temp_dir, "statements")
-                
-                if uploaded_receipts:
-                    receipts_path = save_uploaded_files(uploaded_receipts, receipts_path)
-                if uploaded_statements:
-                    statements_path = save_uploaded_files(uploaded_statements, statements_path)
-            else:
-                receipts_path = st.session_state.receipts_dir
-                statements_path = statements_dir
+        if not uploaded_receipts or not uploaded_statements:
+            st.error("Veuillez uploader au moins une facture et un relevé bancaire")
+        else:
+            with st.spinner("Analyse en cours..."):
+                try:
+                    # Créer un dossier temporaire
+                    temp_dir = tempfile.mkdtemp()
+                    receipts_dir = os.path.join(temp_dir, "receipts")
+                    statements_dir = os.path.join(temp_dir, "statements")
+                    os.makedirs(receipts_dir, exist_ok=True)
+                    os.makedirs(statements_dir, exist_ok=True)
 
-            if not os.path.exists(receipts_path):
-                st.error(f"Dossier introuvable: {receipts_path}")
-            elif not os.path.exists(statements_path):
-                st.error(f"Dossier introuvable: {statements_path}")
-            else:
-                with st.spinner("Analyse en cours..."):
-                    output_csv = "rapprochement_results.csv"
-                    main.main(receipts_path, statements_path, "project/doc_json", output_csv)
-                    
+                    # Sauvegarder les fichiers uploadés
+                    receipt_paths = save_uploaded_files(uploaded_receipts, receipts_dir)
+                    statement_paths = save_uploaded_files(uploaded_statements, statements_dir)
+
+                    # Stocker les images en base64 dans session_state
+                    st.session_state.temp_images = {
+                        os.path.basename(path): image_to_base64(path) 
+                        for path in receipt_paths
+                    }
+
+                    # Exécuter le traitement
+                    output_csv = os.path.join(temp_dir, "results.csv")
+                    main.process_uploads(receipts_dir, statements_dir, output_csv)
+
                     if os.path.exists(output_csv):
                         st.session_state.results_df = pd.read_csv(output_csv)
                         st.session_state.clicked_row = None
                         st.success(f"Analyse terminée ({len(st.session_state.results_df)} transactions)")
-        except Exception as e:
-            st.error(f"Erreur: {str(e)}")
-        finally:
-            if temp_dir and os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir)
+                except Exception as e:
+                    st.error(f"Erreur lors du traitement: {str(e)}")
+                finally:
+                    if os.path.exists(temp_dir):
+                        shutil.rmtree(temp_dir)
 
-    # Affichage des résultats
     if st.session_state.results_df is not None:
         st.subheader("Résultats du rapprochement")
+        display_df = safe_display_columns(st.session_state.results_df, ['vendor', 'amount', 'currency', 'date'])
         
-        # Colonnes spécifiques à afficher
-        columns_to_display = ['vendor', 'amount', 'currency', 'date']
-        display_df = safe_display_columns(st.session_state.results_df, columns_to_display)
-        
-        # Afficher le tableau avec sélection de ligne
         selected_rows = st.dataframe(
             display_df,
             hide_index=True,
@@ -139,34 +128,31 @@ with tab1:
             key="dataframe_tab1"
         )
         
-        # Gérer la sélection de ligne
         if hasattr(selected_rows, 'selection') and selected_rows.selection:
             selected_indices = selected_rows.selection.rows
             if selected_indices:
                 st.session_state.clicked_row = selected_indices[0]
         
-        # Afficher l'image sélectionnée
-        if st.session_state.clicked_row is not None and st.session_state.clicked_row < len(st.session_state.results_df):
+        if st.session_state.clicked_row is not None:
             row = st.session_state.results_df.iloc[st.session_state.clicked_row]
-            img_path = row.get('image_path', '')
-            img = load_image(img_path)
+            img_name = os.path.basename(row.get('image_path', ''))
+            base64_img = st.session_state.temp_images.get(img_name)
             
-            if img:
+            if base64_img:
                 st.divider()
                 col1, col2 = st.columns([1, 2])
                 with col1:
-                    st.image(img, width=350, caption=os.path.basename(img_path))
+                    display_image_from_base64(base64_img, img_name)
                 with col2:
                     st.subheader("Détails de la transaction")
                     st.json({
                         "Fournisseur": row.get('vendor', 'N/A'),
                         "Montant": row.get('amount', 'N/A'),
                         "Devise": row.get('currency', 'N/A'),
-                        "Date": row.get('date', 'N/A'),
-                        "Chemin de l'image": img_path
+                        "Date": row.get('date', 'N/A')
                     })
             else:
-                st.warning(f"Image non disponible ou chemin invalide: {img_path}")
+                st.warning("Image non disponible")
 
 with tab2:
     st.header("Recherche de Factures")
@@ -175,17 +161,34 @@ with tab2:
     with col1:
         results_file = st.file_uploader("Fichier de résultats (.csv)", type=["csv"])
     with col2:
-        search_image_dir = st.text_input("Dossier des images", st.session_state.receipts_dir)
+        uploaded_images = st.file_uploader("Images de factures", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
     
     if st.button("Rechercher les factures"):
-        if results_file and search_image_dir:
+        if results_file and uploaded_images:
             with st.spinner("Recherche en cours..."):
-                temp_csv = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
                 try:
-                    temp_csv.write(results_file.getvalue())
-                    temp_csv.close()
+                    temp_dir = tempfile.mkdtemp()
                     
-                    matches = main.search_receipts(temp_csv.name, search_image_dir)
+                    # Sauvegarder le CSV
+                    csv_path = os.path.join(temp_dir, "results.csv")
+                    with open(csv_path, "wb") as f:
+                        f.write(results_file.getvalue())
+                    
+                    # Sauvegarder les images et stocker en base64
+                    images_dir = os.path.join(temp_dir, "images")
+                    os.makedirs(images_dir, exist_ok=True)
+                    
+                    temp_images = {}
+                    for img in uploaded_images:
+                        img_path = os.path.join(images_dir, img.name)
+                        with open(img_path, "wb") as f:
+                            f.write(img.getbuffer())
+                        temp_images[img.name] = image_to_base64(img_path)
+                    
+                    st.session_state.temp_images = temp_images
+                    
+                    # Exécuter la recherche
+                    matches = main.search_receipts_from_uploads(csv_path, images_dir)
                     
                     if matches:
                         st.session_state.results_df = pd.DataFrame(matches)
@@ -193,19 +196,18 @@ with tab2:
                         st.success(f"{len(matches)} factures trouvées")
                     else:
                         st.warning("Aucune correspondance trouvée")
+                except Exception as e:
+                    st.error(f"Erreur lors de la recherche: {str(e)}")
                 finally:
-                    os.unlink(temp_csv.name)
+                    if os.path.exists(temp_dir):
+                        shutil.rmtree(temp_dir)
         else:
-            st.error("Veuillez sélectionner un fichier et un dossier d'images")
+            st.error("Veuillez sélectionner un fichier CSV et des images de factures")
     
     if st.session_state.results_df is not None and not st.session_state.results_df.empty:
         st.subheader("Résultats de la recherche")
+        display_df = safe_display_columns(st.session_state.results_df, ['vendor', 'amount', 'currency', 'date'])
         
-        # Colonnes spécifiques à afficher
-        columns_to_display = ['vendor', 'amount', 'currency', 'date']
-        display_df = safe_display_columns(st.session_state.results_df, columns_to_display)
-        
-        # Afficher le tableau avec sélection de ligne
         selected_rows = st.dataframe(
             display_df,
             hide_index=True,
@@ -214,25 +216,24 @@ with tab2:
             key="dataframe_tab2"
         )
         
-        # Gérer la sélection de ligne
         if hasattr(selected_rows, 'selection') and selected_rows.selection:
             selected_indices = selected_rows.selection.rows
             if selected_indices:
                 st.session_state.clicked_row = selected_indices[0]
         
-        # Afficher l'image sélectionnée
-        if st.session_state.clicked_row is not None and st.session_state.clicked_row < len(st.session_state.results_df):
+        if st.session_state.clicked_row is not None:
             selected = st.session_state.results_df.iloc[st.session_state.clicked_row]
-            img_path = selected.get('image_path', '')
-            img = load_image(img_path)
+            img_name = os.path.basename(selected.get('image_path', ''))
+            base64_img = st.session_state.temp_images.get(img_name)
             
-            if img:
+            if base64_img:
                 st.divider()
                 col1, col2 = st.columns([1, 2])
                 with col1:
-                    st.image(img, width=350, caption=os.path.basename(img_path))
+                    display_image_from_base64(base64_img, img_name)
                 with col2:
                     st.subheader("Détails de la facture")
-                    st.json({k: v for k, v in selected.items() if k != 'image_path'})
+                    items_keeped = ['json_file', 'csv_file', 'date','amount','currency','vendor']
+                    st.json({k: selected[k] for k in items_keeped if k in selected})
             else:
-                st.warning(f"Image non disponible ou chemin invalide: {img_path}")
+                st.warning("Image non disponible")
