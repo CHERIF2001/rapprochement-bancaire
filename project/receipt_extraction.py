@@ -6,6 +6,7 @@ from image_processing import encode_image
 def read_context():
     """Lit le contenu du fichier context.txt et retourne le texte."""
     try:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
         context_path = os.path.join(script_dir, "context.txt")
         with open(context_path, "r", encoding='utf-8') as file:
             return file.read()
