@@ -5,7 +5,7 @@ import tempfile
 import shutil
 import time
 import sys
-from io import StringIO, BytesIO
+from io import StringIO
 from PIL import Image
 import main
 import base64
@@ -46,11 +46,6 @@ st.markdown("""
     }
     .stqdm > div > div > div > div {
         background-color: #1e88e5 !important;
-    }
-    .download-buttons {
-        display: flex;
-        gap: 10px;
-        margin-bottom: 15px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -175,35 +170,6 @@ with tab1:
 
     if st.session_state.results_df is not None:
         st.subheader("Résultats du rapprochement")
-        
-        # Boutons de téléchargement
-        col_dl1, col_dl2 = st.columns(2)
-        with col_dl1:
-            csv = st.session_state.results_df.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="📥 Télécharger en CSV",
-                data=csv,
-                file_name='rapprochement_complet.csv',
-                mime='text/csv',
-                key='download_csv_tab1',
-                use_container_width=True
-            )
-        with col_dl2:
-            excel_buffer = BytesIO()
-            with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
-                st.session_state.results_df.to_excel(writer, index=False)
-            st.download_button(
-                label="📊 Télécharger en Excel",
-                data=excel_buffer.getvalue(),
-                file_name='rapprochement_complet.xlsx',
-                mime='application/vnd.ms-excel',
-                key='download_excel_tab1',
-                use_container_width=True
-            )
-        
-        # Instruction pour sélectionner une ligne
-        st.info("ℹ️ Cliquez sur la case à gauche d'une ligne pour afficher l'image correspondante")
-        
         display_df = safe_display_columns(st.session_state.results_df, ['vendor', 'amount', 'currency', 'date'])
         
         selected_rows = st.dataframe(
@@ -320,35 +286,6 @@ with tab2:
     
     if st.session_state.results_df is not None and not st.session_state.results_df.empty:
         st.subheader("Résultats de la recherche")
-        
-        # Boutons de téléchargement
-        col_dl1, col_dl2 = st.columns(2)
-        with col_dl1:
-            csv = st.session_state.results_df.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="📥 Télécharger en CSV",
-                data=csv,
-                file_name='recherche_factures.csv',
-                mime='text/csv',
-                key='download_csv_tab2',
-                use_container_width=True
-            )
-        with col_dl2:
-            excel_buffer = BytesIO()
-            with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
-                st.session_state.results_df.to_excel(writer, index=False)
-            st.download_button(
-                label="📊 Télécharger en Excel",
-                data=excel_buffer.getvalue(),
-                file_name='recherche_factures.xlsx',
-                mime='application/vnd.ms-excel',
-                key='download_excel_tab2',
-                use_container_width=True
-            )
-        
-        # Instruction pour sélectionner une ligne
-        st.info("ℹ️ Cliquez sur la case à gauche d'une ligne pour afficher l'image correspondante")
-        
         display_df = safe_display_columns(st.session_state.results_df, ['vendor', 'amount', 'currency', 'date'])
         
         selected_rows = st.dataframe(
