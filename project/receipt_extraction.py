@@ -6,7 +6,8 @@ from image_processing import encode_image
 def read_context():
     """Lit le contenu du fichier context.txt et retourne le texte."""
     try:
-        with open("./context.txt", "r", encoding='utf-8') as file:
+        context_path = os.path.join(script_dir, "context.txt")
+        with open(context_path, "r", encoding='utf-8') as file:
             return file.read()
     except Exception as e:
         print(f"Erreur lors de la lecture de context.txt : {e}")
