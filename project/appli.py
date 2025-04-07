@@ -170,6 +170,7 @@ with tab1:
 
     if st.session_state.results_df is not None:
         st.subheader("Résultats du rapprochement")
+        st.subheader("Appuyez sur le boutton à gauche de la colonne à afficher pour voir la facture!")
         display_df = safe_display_columns(st.session_state.results_df, ['vendor', 'amount', 'currency', 'date'])
         
         selected_rows = st.dataframe(
@@ -286,6 +287,7 @@ with tab2:
     
     if st.session_state.results_df is not None and not st.session_state.results_df.empty:
         st.subheader("Résultats de la recherche")
+        st.subheader("Appuyez sur le boutton à gauche de la colonne à afficher pour voir la facture!")
         display_df = safe_display_columns(st.session_state.results_df, ['vendor', 'amount', 'currency', 'date'])
         
         selected_rows = st.dataframe(
